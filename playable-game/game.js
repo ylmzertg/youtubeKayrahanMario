@@ -297,7 +297,8 @@
     // Animasyon sayacı + koşma tozu
     if (Math.abs(player.vx) > 0.5 && player.onGround) {
       player.anim += 0.25;
-      if (++runDust % 6 === 0) spawnDust(player.x + player.w / 2, player.y + player.h, 1, -player.face);
+      // Arkadan toz (koştuğu belli olsun): daha sık ve birden fazla
+      if (++runDust % 4 === 0) spawnDust(player.x + player.w / 2 - player.face * 12, player.y + player.h, 2, -player.face);
     }
 
     // Toz parçacıklarını güncelle
@@ -431,13 +432,14 @@
       sx = 1 - (-v) / 130;         //   ve hafif incelir
       rot = player.face * 0.14;    // hareket yönüne yatar
     } else if (running) {
-      // Koşma: yukarı-aşağı zıplama + sallanma + nefes alıp verme sıkışması
-      bob = Math.abs(Math.sin(player.anim)) * 5;
-      rot = Math.sin(player.anim) * 0.11;
-      sy = 1 - Math.sin(player.anim * 2) * 0.05;
-      sx = 1 + Math.sin(player.anim * 2) * 0.05;
+      // Koşma: hareket yönüne ÖNE EĞİLME + hafif adım sallanması + çok az bob
+      const stride = Math.sin(player.anim);
+      rot = player.face * 0.13 + stride * 0.05;  // öne eğil (yöne göre) + sallan
+      bob = Math.abs(stride) * 1.5;              // çok hafif dikey hareket
+      sy = 1 - Math.abs(stride) * 0.03;
+      sx = 1 + Math.abs(stride) * 0.03;
     }
-    const bounce = running ? Math.sin(player.anim) * 3 : 0;
+    const bounce = running ? Math.sin(player.anim) * 1.5 : 0;
 
     // Karakter resmi yüklüyse onu çiz (yön çevirme dahil), yoksa vektör Pofi.
     if (heroLoaded) {
