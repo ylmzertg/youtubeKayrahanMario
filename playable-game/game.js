@@ -150,26 +150,47 @@
   const GROUND_Y = H - 90;
   const LEVEL_W = 2600; // bölüm yatayda canvas'tan uzun → kamera kayar
 
-  const platforms = [
-    { x: 0,    y: GROUND_Y, w: LEVEL_W, h: 90 },     // zemin
+  // Zemin parçalara bölündü → aralarındaki boşluklar KUYU (çukur).
+  // Kuyu genişlikleri zıplayarak geçilebilecek kadar (~120-140px).
+  const groundSegs = [
+    { x: 0,    y: GROUND_Y, w: 520, h: 90 },   // kuyu 520-640
+    { x: 640,  y: GROUND_Y, w: 520, h: 90 },   // kuyu 1160-1300
+    { x: 1300, y: GROUND_Y, w: 560, h: 90 },   // kuyu 1860-1980
+    { x: 1980, y: GROUND_Y, w: 620, h: 90 },   // bitişe kadar
+  ];
+  const floating = [
     { x: 320,  y: 740, w: 160, h: 26 },
-    { x: 560,  y: 630, w: 150, h: 26 },
+    { x: 560,  y: 640, w: 150, h: 26 },   // kuyu üstü yardımcı
     { x: 820,  y: 720, w: 160, h: 26 },
     { x: 1080, y: 600, w: 150, h: 26 },
-    { x: 1320, y: 700, w: 170, h: 26 },
-    { x: 1620, y: 600, w: 150, h: 26 },
-    { x: 1880, y: 690, w: 160, h: 26 },
+    { x: 1210, y: 700, w: 150, h: 26 },   // kuyu üstü yardımcı
+    { x: 1500, y: 660, w: 170, h: 26 },
+    { x: 1900, y: 700, w: 150, h: 26 },   // kuyu üstü yardımcı
     { x: 2150, y: 590, w: 150, h: 26 },
   ];
+  const platforms = groundSegs.concat(floating); // çarpışma için hepsi
 
   const coinsTemplate = [
-    { x: 380, y: 690 }, { x: 610, y: 580 }, { x: 880, y: 670 },
-    { x: 1130, y: 550 }, { x: 1380, y: 650 }, { x: 1670, y: 550 },
-    { x: 1940, y: 640 }, { x: 2200, y: 540 }, { x: 1000, y: 820 },
-    { x: 500, y: 820 }, { x: 1500, y: 820 }, { x: 2000, y: 820 },
+    { x: 380, y: 690 }, { x: 610, y: 590 }, { x: 880, y: 670 },
+    { x: 1130, y: 550 }, { x: 1230, y: 650 }, { x: 1560, y: 610 },
+    { x: 1940, y: 650 }, { x: 2200, y: 540 }, { x: 1000, y: 820 },
+    { x: 420, y: 820 }, { x: 1450, y: 820 }, { x: 2080, y: 820 },
   ];
 
-  const goal = { x: LEVEL_W - 180, y: GROUND_Y - 200, w: 16, h: 200 };
+  // Dikenler (statik tehlike) — zemin üstünde.
+  const spikesTemplate = [
+    { x: 360, y: GROUND_Y - 24, w: 56, h: 24 },
+    { x: 1480, y: GROUND_Y - 24, w: 56, h: 24 },
+  ];
+
+  // Gezen düşmanlar — min..max arasında gidip gelir.
+  const enemiesTemplate = [
+    { x: 760,  y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.4, min: 700,  max: 1080 },
+    { x: 1420, y: GROUND_Y - 40, w: 40, h: 40, dir: -1, speed: 1.6, min: 1340, max: 1780 },
+    { x: 2040, y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.5, min: 2000, max: 2300 },
+  ];
+
+  const goal = { x: LEVEL_W - 150, y: GROUND_Y - 200, w: 16, h: 200 };
 
   // ---------------------------------------------------------------------
   // 5) Oyuncu (Pofi) ve oyun durumu
@@ -196,6 +217,11 @@
   let blink = 0;
   let particles = [];   // koşma/iniş toz efekti
   let runDust = 0;      // koşarken toz çıkış sayacı
+  let lives = 3;        // can hakkı (tur başına, kalıcı değil)
+  let iframes = 0;      // hasar sonrası kısa dokunulmazlık (kare)
+  let enemies = [];     // gezen düşmanlar (kopya)
+  let spikes = [];      // dikenler (kopya)
+  let checkpointX = 80; // kuyuya düşünce geri doğacağı güvenli x
 
   // Ayak altında toz püskürt (n adet, dir: -1 sol / +1 sağ / 0 rastgele).
   function spawnDust(px, py, n, dir) {
@@ -222,9 +248,14 @@
     player.x = 80; player.y = GROUND_Y - 70;
     player.vx = 0; player.vy = 0; player.onGround = false;
     coins = coinsTemplate.map(c => ({ ...c, taken: false, bob: Math.PI * (c.x % 7) }));
+    enemies = enemiesTemplate.map(e => ({ ...e, alive: true, anim: 0 }));
+    spikes = spikesTemplate.map(s => ({ ...s }));
     score = 0;
     cameraX = 0;
     particles = [];
+    lives = 3;
+    iframes = 0;
+    checkpointX = 80;
   }
 
   // Oyunu başlatır (giriş ekranından veya yeniden oynamadan).
@@ -242,12 +273,36 @@
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
+  // Bir can eksilt; canlar biterse "Oyun Bitti".
+  function loseLife() {
+    lives--;
+    Sound.hurt();
+    if (lives <= 0) {
+      state = 'over';
+      if (score > best) best = score;
+      SDK.saveData({ best, lastScore: score });
+    }
+  }
+
+  // Tehlikeye (diken/düşman) yandan değme: can git + geri savrul + dokunulmazlık.
+  function hitContact(dir) {
+    if (iframes > 0 || state !== 'play') return;
+    loseLife();
+    if (state === 'play') {
+      iframes = 90;                 // ~1.5 sn dokunulmazlık
+      player.vx = dir * 8;          // tehlikeden uzağa savrul
+      player.vy = -9;
+    }
+  }
+
   // ---------------------------------------------------------------------
   // 7) Güncelleme (fizik)
   // ---------------------------------------------------------------------
   function update() {
     if (paused) return;
     if (state !== 'play') { blink += 0.08; return; }
+
+    if (iframes > 0) iframes--;   // hasar sonrası dokunulmazlık geri sayımı
 
     // Yatay hareket
     if (input.left)  { player.vx -= MOVE; player.face = -1; }
@@ -294,6 +349,9 @@
       }
     }
 
+    // Güvenli zeminde dururken checkpoint güncelle (kuyuya düşünce geri doğmak için)
+    if (player.onGround) checkpointX = player.x;
+
     // Animasyon sayacı + koşma tozu
     if (Math.abs(player.vx) > 0.5 && player.onGround) {
       player.anim += 0.25;
@@ -314,6 +372,43 @@
       c.bob += 0.1;
       const box = { x: c.x - 14, y: c.y - 14, w: 28, h: 28 };
       if (aabb(player, box)) { c.taken = true; score++; Sound.coin(); }
+    }
+
+    // Düşmanlar: gidip gel + çarpışma (üstüne basınca yen, yandan değince can git)
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      e.x += e.dir * e.speed;
+      if (e.x <= e.min) { e.x = e.min; e.dir = 1; }
+      if (e.x >= e.max) { e.x = e.max; e.dir = -1; }
+      e.anim += 0.2;
+      if (aabb(player, e)) {
+        const stomp = player.vy > 0 && (player.y + player.h) < (e.y + e.h * 0.6);
+        if (stomp) {
+          e.alive = false;
+          player.vy = -12;            // ezince zıpla
+          score += 2;
+          Sound.coin();
+          spawnDust(e.x + e.w / 2, e.y + e.h, 7, 0);
+        } else {
+          hitContact(player.x < e.x ? -1 : 1);
+        }
+      }
+    }
+
+    // Dikenler (statik): değince can git
+    for (const s of spikes) {
+      if (aabb(player, s)) hitContact(player.x < s.x ? -1 : 1);
+    }
+
+    // Kuyuya düşme: ekran altına inerse can git + checkpoint'e geri doğ
+    if (player.y > H + 40) {
+      loseLife();
+      if (state === 'play') {
+        player.x = checkpointX;
+        player.y = GROUND_Y - player.h - 80;
+        player.vx = 0; player.vy = 0;
+        iframes = 70;
+      }
     }
 
     // Hedef bayrağı
@@ -405,6 +500,47 @@
     ctx.closePath(); ctx.fill();
   }
 
+  function drawEnemy(e) {
+    if (!e.alive) return;
+    const x = e.x - cameraX;
+    if (x + e.w < 0 || x > W) return;
+    const wob = Math.sin(e.anim) * 2;
+    // Gövde (sevimli turuncu düşman)
+    ctx.fillStyle = '#ff7043';
+    roundRect(x, e.y + wob, e.w, e.h - wob, 10); ctx.fill();
+    // Ayaklar
+    ctx.fillStyle = '#c1440e';
+    ctx.fillRect(x + 6, e.y + e.h - 6, 10, 6);
+    ctx.fillRect(x + e.w - 16, e.y + e.h - 6, 10, 6);
+    // Gözler (gidiş yönüne bakar)
+    const ex = e.dir > 0 ? 4 : -4;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(x + 14 + ex, e.y + 16 + wob, 7, 0, 7); ctx.arc(x + e.w - 14 + ex, e.y + 16 + wob, 7, 0, 7); ctx.fill();
+    ctx.fillStyle = '#1b2540';
+    ctx.beginPath(); ctx.arc(x + 14 + ex * 1.5, e.y + 16 + wob, 3.5, 0, 7); ctx.arc(x + e.w - 14 + ex * 1.5, e.y + 16 + wob, 3.5, 0, 7); ctx.fill();
+    // Kaşlar (öfkeli)
+    ctx.strokeStyle = '#1b2540'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x + 7, e.y + 8 + wob); ctx.lineTo(x + 19, e.y + 12 + wob);
+    ctx.moveTo(x + e.w - 7, e.y + 8 + wob); ctx.lineTo(x + e.w - 19, e.y + 12 + wob); ctx.stroke();
+  }
+
+  function drawSpike(s) {
+    const x = s.x - cameraX;
+    if (x + s.w < 0 || x > W) return;
+    const n = Math.max(2, Math.floor(s.w / 18));
+    const step = s.w / n;
+    ctx.fillStyle = '#9aa3ab';
+    for (let i = 0; i < n; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + i * step, s.y + s.h);
+      ctx.lineTo(x + i * step + step / 2, s.y);
+      ctx.lineTo(x + (i + 1) * step, s.y + s.h);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = '#6b7177'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, s.y + s.h); ctx.lineTo(x + s.w, s.y + s.h); ctx.stroke();
+  }
+
   function drawParticles() {
     for (const d of particles) {
       const px = d.x - cameraX;
@@ -419,6 +555,9 @@
   }
 
   function drawPlayer() {
+    // Hasar sonrası dokunulmazlıkta yanıp sön
+    if (iframes > 0 && Math.floor(iframes / 4) % 2 === 0) return;
+
     const x = player.x - cameraX;
     const y = player.y;
 
@@ -489,7 +628,18 @@
     ctx.closePath();
   }
 
+  function heart(cx, cy, r, filled) {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + r * 0.9);
+    ctx.bezierCurveTo(cx - r * 1.4, cy - r * 0.4, cx - r * 0.5, cy - r * 1.1, cx, cy - r * 0.3);
+    ctx.bezierCurveTo(cx + r * 0.5, cy - r * 1.1, cx + r * 1.4, cy - r * 0.4, cx, cy + r * 0.9);
+    ctx.closePath();
+    if (filled) { ctx.fillStyle = '#ff4d6d'; ctx.fill(); }
+    else { ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill(); ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 2; ctx.stroke(); }
+  }
+
   function drawHUD() {
+    // Para sayacı (sol üst)
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     roundRect(16, 16, 150, 56, 14); ctx.fill();
     ctx.fillStyle = '#ffd23f';
@@ -497,7 +647,13 @@
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 30px sans-serif';
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
     ctx.fillText('× ' + score, 64, 46);
+
+    // Canlar (sağ üst) — 3 kalp
+    for (let i = 0; i < 3; i++) {
+      heart(W - 40 - i * 44, 44, 14, i < lives);
+    }
   }
 
   function drawCenterText(title, subtitle) {
@@ -554,14 +710,21 @@
     if (state === 'start') { drawStartScreen(); return; }
 
     drawBackground();
+    // Kuyu karanlığı: zemin satırını koyu boya, zemin parçaları üstüne çizilince
+    // sadece boşluklar (kuyular) karanlık kalır.
+    ctx.fillStyle = '#241a10';
+    ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
     for (const p of platforms) drawPlatform(p);
     drawGoal();
+    for (const s of spikes) drawSpike(s);
     for (const c of coins) drawCoin(c);
+    for (const e of enemies) drawEnemy(e);
     drawParticles();
     drawPlayer();
     drawHUD();
 
     if (state === 'win') drawCenterText('Tebrikler! 🎉', 'Tekrar oyna — dokun');
+    if (state === 'over') drawCenterText('Oyun Bitti', 'Tekrar dene — dokun');
   }
 
   // ---------------------------------------------------------------------
