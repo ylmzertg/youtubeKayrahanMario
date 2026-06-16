@@ -151,43 +151,49 @@
   const LEVEL_W = 2600; // bölüm yatayda canvas'tan uzun → kamera kayar
 
   // Zemin parçalara bölündü → aralarındaki boşluklar KUYU (çukur).
-  // Kuyu genişlikleri zıplayarak geçilebilecek kadar (~120-140px).
+  // Her kuyunun ORTASINDA bir basamak taşı var → kolayca iki hopla geçilir,
+  // ıskalarsan düşersin. Genişlikler zıplanabilir.
   const groundSegs = [
-    { x: 0,    y: GROUND_Y, w: 520, h: 90 },   // kuyu 520-640
-    { x: 640,  y: GROUND_Y, w: 520, h: 90 },   // kuyu 1160-1300
-    { x: 1300, y: GROUND_Y, w: 560, h: 90 },   // kuyu 1860-1980
-    { x: 1980, y: GROUND_Y, w: 620, h: 90 },   // bitişe kadar
+    { x: 0,    y: GROUND_Y, w: 520, h: 90 },   // kuyu 520-630
+    { x: 630,  y: GROUND_Y, w: 540, h: 90 },   // kuyu 1170-1290
+    { x: 1290, y: GROUND_Y, w: 560, h: 90 },   // kuyu 1850-1960
+    { x: 1960, y: GROUND_Y, w: 640, h: 90 },   // bitişe kadar
   ];
+  // Kuyu ortası basamak taşları (ulaşılabilir yükseklik).
+  const steps = [
+    { x: 540,  y: GROUND_Y - 78, w: 74, h: 22 },
+    { x: 1195, y: GROUND_Y - 78, w: 74, h: 22 },
+    { x: 1872, y: GROUND_Y - 78, w: 74, h: 22 },
+  ];
+  // Para platformları — hepsi yerden zıplayarak ULAŞILABİLİR yükseklikte (y 760-800).
   const floating = [
-    { x: 320,  y: 740, w: 160, h: 26 },
-    { x: 560,  y: 640, w: 150, h: 26 },   // kuyu üstü yardımcı
-    { x: 820,  y: 720, w: 160, h: 26 },
-    { x: 1080, y: 600, w: 150, h: 26 },
-    { x: 1210, y: 700, w: 150, h: 26 },   // kuyu üstü yardımcı
-    { x: 1500, y: 660, w: 170, h: 26 },
-    { x: 1900, y: 700, w: 150, h: 26 },   // kuyu üstü yardımcı
-    { x: 2150, y: 590, w: 150, h: 26 },
+    { x: 300,  y: 770, w: 140, h: 24 },
+    { x: 820,  y: 760, w: 150, h: 24 },
+    { x: 1440, y: 770, w: 150, h: 24 },
+    { x: 2150, y: 760, w: 150, h: 24 },
   ];
-  const platforms = groundSegs.concat(floating); // çarpışma için hepsi
+  const platforms = groundSegs.concat(steps, floating); // çizim için hepsi
+  const solids = groundSegs;                 // tam katı (her yönden çarpışır)
+  const oneway = steps.concat(floating);     // tek yönlü (altından geç, üstüne kon)
 
   const coinsTemplate = [
-    { x: 380, y: 690 }, { x: 610, y: 590 }, { x: 880, y: 670 },
-    { x: 1130, y: 550 }, { x: 1230, y: 650 }, { x: 1560, y: 610 },
-    { x: 1940, y: 650 }, { x: 2200, y: 540 }, { x: 1000, y: 820 },
-    { x: 420, y: 820 }, { x: 1450, y: 820 }, { x: 2080, y: 820 },
+    { x: 200, y: 805 }, { x: 360, y: 720 }, { x: 575, y: 720 },
+    { x: 760, y: 805 }, { x: 890, y: 710 }, { x: 1230, y: 720 },
+    { x: 1380, y: 805 }, { x: 1510, y: 720 }, { x: 1905, y: 720 },
+    { x: 2050, y: 805 }, { x: 2215, y: 710 },
   ];
 
-  // Dikenler (statik tehlike) — zemin üstünde.
+  // Dikenler (statik tehlike) — segman ortasında, kuyu kenarlarından uzak.
   const spikesTemplate = [
-    { x: 360, y: GROUND_Y - 24, w: 56, h: 24 },
-    { x: 1480, y: GROUND_Y - 24, w: 56, h: 24 },
+    { x: 980,  y: GROUND_Y - 24, w: 52, h: 24 },
+    { x: 1600, y: GROUND_Y - 24, w: 52, h: 24 },
   ];
 
-  // Gezen düşmanlar — min..max arasında gidip gelir.
+  // Gezen düşmanlar — min..max arasında gidip gelir (kuyu/diken üstüne taşmaz).
   const enemiesTemplate = [
-    { x: 760,  y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.4, min: 700,  max: 1080 },
-    { x: 1420, y: GROUND_Y - 40, w: 40, h: 40, dir: -1, speed: 1.6, min: 1340, max: 1780 },
-    { x: 2040, y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.5, min: 2000, max: 2300 },
+    { x: 760,  y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.3, min: 700,  max: 920 },
+    { x: 1400, y: GROUND_Y - 40, w: 40, h: 40, dir: -1, speed: 1.5, min: 1330, max: 1560 },
+    { x: 2080, y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.4, min: 2010, max: 2300 },
   ];
 
   const goal = { x: LEVEL_W - 150, y: GROUND_Y - 200, w: 16, h: 200 };
@@ -322,9 +328,9 @@
     player.vy += GRAVITY;
     if (player.vy > 22) player.vy = 22;
 
-    // --- X ekseni hareketi + çarpışma ---
+    // --- X ekseni hareketi + çarpışma (sadece KATI zeminler engeller) ---
     player.x += player.vx;
-    for (const p of platforms) {
+    for (const p of solids) {
       if (aabb(player, p)) {
         if (player.vx > 0) player.x = p.x - player.w;
         else if (player.vx < 0) player.x = p.x + p.w;
@@ -336,21 +342,36 @@
     if (player.x + player.w > LEVEL_W) player.x = LEVEL_W - player.w;
 
     // --- Y ekseni hareketi + çarpışma ---
+    const prevBottom = player.y + player.h;   // hareketten ÖNCEki alt kenar
     player.y += player.vy;
-    const impactV = player.vy;          // çarpma anındaki hız (iniş tozu için)
+    const impactV = player.vy;                // çarpma anındaki hız (iniş tozu için)
     player.onGround = false;
-    for (const p of platforms) {
+    let landedSeg = null;                     // bu kare basılan KATI zemin parçası
+
+    // Katı zeminler: her yönden çarpışır
+    for (const p of solids) {
       if (aabb(player, p)) {
         if (player.vy > 0) {
-          player.y = p.y - player.h; player.onGround = true;
-          if (impactV > 8) spawnDust(player.x + player.w / 2, player.y + player.h, 6, 0); // iniş tozu
+          player.y = p.y - player.h; player.onGround = true; landedSeg = p;
+          if (impactV > 8) spawnDust(player.x + player.w / 2, player.y + player.h, 6, 0);
         } else if (player.vy < 0) player.y = p.y + p.h;
         player.vy = 0;
       }
     }
+    // Tek yönlü platformlar: yalnızca DÜŞERKEN ve üstten gelirken kon
+    for (const p of oneway) {
+      if (player.vy > 0 && prevBottom <= p.y + 4 && aabb(player, p)) {
+        player.y = p.y - player.h; player.vy = 0; player.onGround = true;
+        if (impactV > 8) spawnDust(player.x + player.w / 2, player.y + player.h, 5, 0);
+      }
+    }
 
-    // Güvenli zeminde dururken checkpoint güncelle (kuyuya düşünce geri doğmak için)
-    if (player.onGround) checkpointX = player.x;
+    // Checkpoint SADECE sağlam zeminde + kuyu kenarlarından uzağa kaydedilir
+    // (yoksa kuyuya düşünce tekrar kuyuya doğup canlar peş peşe biterdi).
+    if (landedSeg) {
+      checkpointX = Math.min(Math.max(player.x, landedSeg.x + 24),
+                             landedSeg.x + landedSeg.w - player.w - 24);
+    }
 
     // Animasyon sayacı + koşma tozu
     if (Math.abs(player.vx) > 0.5 && player.onGround) {
