@@ -25,6 +25,7 @@
       onPause(fn)       { try { if (hasSDK) ytgame.system.onPause(fn); } catch (e) {} },
       onResume(fn)      { try { if (hasSDK) ytgame.system.onResume(fn); } catch (e) {} },
       audioEnabled()    { try { return hasSDK ? ytgame.system.isAudioEnabled() : true; } catch (e) { return true; } },
+      onAudioEnabledChange(fn) { try { if (hasSDK) ytgame.system.onAudioEnabledChange(fn); } catch (e) {} },
       saveData(obj) {
         try {
           if (hasSDK) return ytgame.game.saveData(JSON.stringify(obj));
@@ -55,6 +56,52 @@
   }
   window.addEventListener('resize', resize);
   resize();
+
+  // ---------------------------------------------------------------------
+  // 2b) Ses efektleri (Web Audio ile sentezlenir — harici dosya yok)
+  //     SDK'nın ses iznine saygılıdır; ilk kullanıcı hareketinde başlar.
+  // ---------------------------------------------------------------------
+  const Sound = (() => {
+    let actx = null;
+    let muted = false; // SDK ses kapalıysa true
+
+    function ensure() {
+      if (!actx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) actx = new AC();
+      }
+      if (actx && actx.state === 'suspended') actx.resume();
+      return actx;
+    }
+
+    // Tek bir ton çal (tip, başlangıç frekansı, süre, ses, bitiş frekansı).
+    function tone(type, freq, dur, vol, freqTo) {
+      if (muted) return;
+      const ac = ensure();
+      if (!ac) return;
+      const t = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if (freqTo) osc.frequency.exponentialRampToValueAtTime(freqTo, t + dur);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    }
+
+    return {
+      unlock() { ensure(); },                 // kullanıcı hareketinde çağrılır
+      setMuted(m) { muted = m; },
+      jump() { tone('square', 320, 0.14, 0.18, 620); },
+      coin() { tone('square', 880, 0.07, 0.16); setTimeout(() => tone('square', 1320, 0.10, 0.16), 70); },
+      win()  { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone('triangle', f, 0.16, 0.2), i * 110)); },
+      hurt() { tone('sawtooth', 300, 0.25, 0.2, 90); },
+    };
+  })();
 
   // ---------------------------------------------------------------------
   // 3) Girdiler — klavye + dokunmatik
@@ -165,6 +212,8 @@
 
   // Oyunu başlatır (giriş ekranından veya yeniden oynamadan).
   function startGame() {
+    Sound.unlock();                  // ses bağlamını kullanıcı hareketinde aç
+    Sound.setMuted(!SDK.audioEnabled());
     resetLevel();
     state = 'play';
   }
@@ -193,6 +242,7 @@
     if (input.jump && player.onGround) {
       player.vy = JUMP_V;
       player.onGround = false;
+      Sound.jump();
     }
 
     // Yerçekimi
@@ -231,12 +281,13 @@
       if (c.taken) continue;
       c.bob += 0.1;
       const box = { x: c.x - 14, y: c.y - 14, w: 28, h: 28 };
-      if (aabb(player, box)) { c.taken = true; score++; }
+      if (aabb(player, box)) { c.taken = true; score++; Sound.coin(); }
     }
 
     // Hedef bayrağı
     if (aabb(player, goal)) {
       state = 'win';
+      Sound.win();
       if (score > best) best = score;
       SDK.saveData({ best, lastScore: score, won: true });
     }
@@ -478,6 +529,10 @@
     // Duraklat/devam (YouTube oyunu arka plana alınca)
     SDK.onPause(() => { paused = true; });
     SDK.onResume(() => { paused = false; });
+
+    // Ses izni değişimini takip et (YouTube'da kullanıcı sesi açıp kapatınca)
+    Sound.setMuted(!SDK.audioEnabled());
+    SDK.onAudioEnabledChange((enabled) => { Sound.setMuted(!enabled); });
 
     loop();
 
