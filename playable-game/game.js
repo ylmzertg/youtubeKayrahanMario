@@ -713,16 +713,27 @@
     ctx.textAlign = 'left';
   }
 
+  // Metni maxWidth'e sığacak en büyük punto ile ayarlar (font'u set eder, puntoyu döner).
+  function fitFont(text, maxWidth, maxSize) {
+    let size = maxSize;
+    ctx.font = 'bold ' + size + 'px sans-serif';
+    while (size > 12 && ctx.measureText(text).width > maxWidth) {
+      size -= 2;
+      ctx.font = 'bold ' + size + 'px sans-serif';
+    }
+    return size;
+  }
+
   function drawCenterText(title, subtitle) {
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 64px sans-serif';
+    fitFont(title, W - 50, 64);                 // başlığı ekrana sığdır
     ctx.fillText(title, W / 2, H / 2 - 40);
     if (Math.floor(blink) % 2 === 0) {
-      ctx.font = 'bold 30px sans-serif';
+      fitFont(subtitle, W - 50, 30);            // alt yazıyı da sığdır
       ctx.fillText(subtitle, W / 2, H / 2 + 40);
     }
     ctx.textAlign = 'left';
@@ -753,7 +764,7 @@
     // Yanıp sönen "başla" ipucu
     if (Math.floor(blink) % 2 === 0) {
       ctx.fillStyle = '#1b2540';
-      ctx.font = 'bold 34px sans-serif';
+      fitFont('▶ Dokun ve Başla', W - 50, 34);
       ctx.fillText('▶ Dokun ve Başla', W / 2, H - 180);
     }
     ctx.textAlign = 'left';
