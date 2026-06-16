@@ -134,13 +134,10 @@
   bindButton('btn-right', 'right');
   bindButton('btn-jump',  'jump');
 
-  // Dokunuş/tıklama: giriş ekranında başlat, kazanınca/bitince yeniden oyna.
-  function advanceFromScreen() {
-    if (state === 'start' || state === 'win' || state === 'over') startGame();
-  }
-  canvas.addEventListener('pointerdown', advanceFromScreen);
+  // Dokunuş/tıklama veya Space/Enter: ekranlardan ilerle (advance fonksiyonu altta).
+  canvas.addEventListener('pointerdown', () => advance());
   addEventListener('keydown', (e) => {
-    if ((state !== 'play') && (e.code === 'Space' || e.code === 'Enter')) startGame();
+    if (state !== 'play' && (e.code === 'Space' || e.code === 'Enter')) advance();
   });
 
   // ---------------------------------------------------------------------
@@ -148,55 +145,64 @@
   //    Zemin + platformlar + paralar + bayrak (hedef).
   // ---------------------------------------------------------------------
   const GROUND_Y = H - 90;
-  const LEVEL_W = 2600; // bölüm yatayda canvas'tan uzun → kamera kayar
 
-  // Zemin parçalara bölündü → aralarındaki boşluklar KUYU (çukur).
-  // Her kuyunun ORTASINDA bir basamak taşı var → kolayca iki hopla geçilir,
-  // ıskalarsan düşersin. Genişlikler zıplanabilir.
-  const groundSegs = [
-    { x: 0,    y: GROUND_Y, w: 520, h: 90 },   // kuyu 520-630
-    { x: 630,  y: GROUND_Y, w: 540, h: 90 },   // kuyu 1170-1290
-    { x: 1290, y: GROUND_Y, w: 560, h: 90 },   // kuyu 1850-1960
-    { x: 1960, y: GROUND_Y, w: 640, h: 90 },   // bitişe kadar
-  ];
-  // Kuyu ortası basamak taşları (ulaşılabilir yükseklik).
-  const steps = [
-    { x: 540,  y: GROUND_Y - 78, w: 74, h: 22 },
-    { x: 1195, y: GROUND_Y - 78, w: 74, h: 22 },
-    { x: 1872, y: GROUND_Y - 78, w: 74, h: 22 },
-  ];
-  // Para platformları — hepsi yerden zıplayarak ULAŞILABİLİR yükseklikte (y 760-800).
-  const floating = [
-    { x: 300,  y: 770, w: 140, h: 24 },
-    { x: 820,  y: 760, w: 150, h: 24 },
-    { x: 1440, y: 770, w: 150, h: 24 },
-    { x: 2150, y: 760, w: 150, h: 24 },
-  ];
-  const platforms = groundSegs.concat(steps, floating); // çizim için hepsi
-  const solids = groundSegs;                 // tam katı (her yönden çarpışır)
-  const oneway = steps.concat(floating);     // tek yönlü (altından geç, üstüne kon)
+  // Bölüm parçalarını kısa yazmak için builder'lar.
+  const gseg  = (x, w)               => ({ x, y: GROUND_Y,      w, h: 90 });            // katı zemin
+  const step  = (x)                  => ({ x, y: GROUND_Y - 78, w: 70, h: 22 });        // kuyu ortası basamak (tek yönlü)
+  const plat  = (x, y, w)            => ({ x, y, w, h: 24 });                            // para platformu (tek yönlü)
+  const spike = (x, w = 52)          => ({ x, y: GROUND_Y - 24, w, h: 24 });            // diken
+  const enemy = (x, dir, speed, min, max) => ({ x, y: GROUND_Y - 40, w: 40, h: 40, dir, speed, min, max });
 
-  const coinsTemplate = [
-    { x: 200, y: 805 }, { x: 360, y: 720 }, { x: 575, y: 720 },
-    { x: 760, y: 805 }, { x: 890, y: 710 }, { x: 1230, y: 720 },
-    { x: 1380, y: 805 }, { x: 1510, y: 720 }, { x: 1905, y: 720 },
-    { x: 2050, y: 805 }, { x: 2215, y: 710 },
-  ];
-
-  // Dikenler (statik tehlike) — segman ortasında, kuyu kenarlarından uzak.
-  const spikesTemplate = [
-    { x: 980,  y: GROUND_Y - 24, w: 52, h: 24 },
-    { x: 1600, y: GROUND_Y - 24, w: 52, h: 24 },
-  ];
-
-  // Gezen düşmanlar — min..max arasında gidip gelir (kuyu/diken üstüne taşmaz).
-  const enemiesTemplate = [
-    { x: 760,  y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.3, min: 700,  max: 920 },
-    { x: 1400, y: GROUND_Y - 40, w: 40, h: 40, dir: -1, speed: 1.5, min: 1330, max: 1560 },
-    { x: 2080, y: GROUND_Y - 40, w: 40, h: 40, dir: 1,  speed: 1.4, min: 2010, max: 2300 },
+  // Tüm bölümler. Yeni bölüm eklemek için diziye bir nesne daha ekle.
+  const LEVELS = [
+    { // --- BÖLÜM 1 ---
+      w: 2600, startX: 80,
+      ground: [gseg(0, 520), gseg(630, 540), gseg(1290, 560), gseg(1960, 640)],
+      steps:  [step(540), step(1195), step(1872)],
+      floating: [plat(300, 770, 140), plat(820, 760, 150), plat(1440, 770, 150), plat(2150, 760, 150)],
+      coins: [
+        { x: 200, y: 805 }, { x: 360, y: 720 }, { x: 575, y: 720 },
+        { x: 760, y: 805 }, { x: 890, y: 710 }, { x: 1230, y: 720 },
+        { x: 1380, y: 805 }, { x: 1510, y: 720 }, { x: 1905, y: 720 },
+        { x: 2050, y: 805 }, { x: 2215, y: 710 },
+      ],
+      spikes: [spike(980), spike(1600)],
+      enemies: [enemy(760, 1, 1.3, 700, 920), enemy(1400, -1, 1.5, 1330, 1560), enemy(2080, 1, 1.4, 2010, 2300)],
+    },
+    { // --- BÖLÜM 2 --- (daha uzun, daha çok kuyu, daha hızlı düşman)
+      w: 2800, startX: 70,
+      ground: [gseg(0, 460), gseg(580, 420), gseg(1130, 460), gseg(1700, 440), gseg(2260, 540)],
+      steps:  [step(490), step(1035), step(1615), step(2170)],
+      floating: [plat(250, 760, 130), plat(760, 740, 140), plat(1300, 760, 140), plat(1850, 750, 140), plat(2480, 760, 140)],
+      coins: [
+        { x: 160, y: 805 }, { x: 300, y: 710 }, { x: 490, y: 705 },
+        { x: 760, y: 690 }, { x: 1035, y: 705 }, { x: 1300, y: 710 },
+        { x: 1450, y: 805 }, { x: 1615, y: 705 }, { x: 1850, y: 700 },
+        { x: 2050, y: 805 }, { x: 2170, y: 705 }, { x: 2480, y: 710 }, { x: 2560, y: 805 },
+      ],
+      spikes: [spike(780), spike(1350), spike(1950)],
+      enemies: [
+        enemy(200, 1, 1.6, 120, 400), enemy(650, 1, 1.8, 600, 740),
+        enemy(1450, -1, 1.9, 1400, 1560), enemy(2400, 1, 1.8, 2300, 2700),
+      ],
+    },
   ];
 
-  const goal = { x: LEVEL_W - 150, y: GROUND_Y - 200, w: 16, h: 200 };
+  // Aktif bölüm verisi (loadLevel ile doldurulur).
+  let LEVEL_W, startX, platforms, solids, oneway, coinsTemplate, spikesTemplate, enemiesTemplate, goal;
+
+  function loadLevel(i) {
+    const L = LEVELS[i];
+    LEVEL_W = L.w;
+    startX = L.startX;
+    solids = L.ground;                       // tam katı (her yönden çarpışır)
+    oneway = L.steps.concat(L.floating);     // tek yönlü (altından geç, üstüne kon)
+    platforms = L.ground.concat(L.steps, L.floating); // çizim için hepsi
+    coinsTemplate = L.coins;
+    spikesTemplate = L.spikes;
+    enemiesTemplate = L.enemies;
+    goal = { x: LEVEL_W - 150, y: GROUND_Y - 200, w: 16, h: 200 };
+  }
 
   // ---------------------------------------------------------------------
   // 5) Oyuncu (Pofi) ve oyun durumu
@@ -218,7 +224,7 @@
   let score = 0;
   let best = 0;
   let cameraX = 0;
-  let state = 'start'; // 'start' | 'play' | 'win' | 'over'
+  let state = 'start'; // 'start' | 'play' | 'levelclear' | 'win' | 'over'
   let paused = false;
   let blink = 0;
   let particles = [];   // koşma/iniş toz efekti
@@ -228,6 +234,7 @@
   let enemies = [];     // gezen düşmanlar (kopya)
   let spikes = [];      // dikenler (kopya)
   let checkpointX = 80; // kuyuya düşünce geri doğacağı güvenli x
+  let currentLevel = 0; // aktif bölüm indeksi
 
   // Ayak altında toz püskürt (n adet, dir: -1 sol / +1 sağ / 0 rastgele).
   function spawnDust(px, py, n, dir) {
@@ -249,27 +256,43 @@
   const FRICTION = 0.8;
   const JUMP_V = -17;
 
-  // Bölümü baştan kurar (durumu değiştirmez).
+  // Aktif bölümü baştan kurar (CAN ve PUAN'a dokunmaz — bölümler arası taşınır).
   function resetLevel() {
-    player.x = 80; player.y = GROUND_Y - 70;
+    player.x = startX; player.y = GROUND_Y - 70;
     player.vx = 0; player.vy = 0; player.onGround = false;
     coins = coinsTemplate.map(c => ({ ...c, taken: false, bob: Math.PI * (c.x % 7) }));
     enemies = enemiesTemplate.map(e => ({ ...e, alive: true, anim: 0 }));
     spikes = spikesTemplate.map(s => ({ ...s }));
-    score = 0;
     cameraX = 0;
     particles = [];
-    lives = 3;
     iframes = 0;
-    checkpointX = 80;
+    checkpointX = startX;
   }
 
-  // Oyunu başlatır (giriş ekranından veya yeniden oynamadan).
+  // Yeni oyun (giriş ekranından / Oyun Bitti / Tebrikler sonrası): Bölüm 1, 3 can.
   function startGame() {
     Sound.unlock();                  // ses bağlamını kullanıcı hareketinde aç
     Sound.setMuted(!SDK.audioEnabled());
+    currentLevel = 0;
+    lives = 3;
+    score = 0;
+    loadLevel(currentLevel);
     resetLevel();
     state = 'play';
+  }
+
+  // Sonraki bölüme geç (can ve puan korunur).
+  function goToNextLevel() {
+    currentLevel++;
+    loadLevel(currentLevel);
+    resetLevel();
+    state = 'play';
+  }
+
+  // Ekranlardan ilerle: bölüm bittiyse sonrakine, diğerlerinde yeni oyun.
+  function advance() {
+    if (state === 'levelclear') goToNextLevel();
+    else if (state === 'start' || state === 'win' || state === 'over') startGame();
   }
 
   // ---------------------------------------------------------------------
@@ -434,10 +457,14 @@
 
     // Hedef bayrağı
     if (aabb(player, goal)) {
-      state = 'win';
       Sound.win();
-      if (score > best) best = score;
-      SDK.saveData({ best, lastScore: score, won: true });
+      if (currentLevel < LEVELS.length - 1) {
+        state = 'levelclear';            // sonraki bölüm var
+      } else {
+        state = 'win';                   // son bölüm bitti
+        if (score > best) best = score;
+        SDK.saveData({ best, lastScore: score, won: true });
+      }
     }
 
     // Kamera oyuncuyu takip eder
@@ -675,6 +702,15 @@
     for (let i = 0; i < 3; i++) {
       heart(W - 40 - i * 44, 44, 14, i < lives);
     }
+
+    // Bölüm göstergesi (üst orta)
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    roundRect(W / 2 - 70, 16, 140, 40, 12); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Bölüm ' + (currentLevel + 1) + ' / ' + LEVELS.length, W / 2, 37);
+    ctx.textAlign = 'left';
   }
 
   function drawCenterText(title, subtitle) {
@@ -744,6 +780,7 @@
     drawPlayer();
     drawHUD();
 
+    if (state === 'levelclear') drawCenterText('Bölüm ' + (currentLevel + 1) + ' Tamam! ✓', 'Sonraki bölüm — dokun');
     if (state === 'win') drawCenterText('Tebrikler! 🎉', 'Tekrar oyna — dokun');
     if (state === 'over') drawCenterText('Oyun Bitti', 'Tekrar dene — dokun');
   }
@@ -771,6 +808,7 @@
     const saved = await SDK.loadData();
     if (saved && typeof saved.best === 'number') best = saved.best;
 
+    loadLevel(0);      // ilk bölümü yükle
     resetLevel();      // bölümü hazırla
     state = 'start';   // giriş ekranıyla başla
 
