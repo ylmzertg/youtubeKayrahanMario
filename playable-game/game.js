@@ -194,6 +194,22 @@
   let state = 'start'; // 'start' | 'play' | 'win' | 'over'
   let paused = false;
   let blink = 0;
+  let particles = [];   // koşma/iniş toz efekti
+  let runDust = 0;      // koşarken toz çıkış sayacı
+
+  // Ayak altında toz püskürt (n adet, dir: -1 sol / +1 sağ / 0 rastgele).
+  function spawnDust(px, py, n, dir) {
+    for (let i = 0; i < n; i++) {
+      particles.push({
+        x: px + (Math.random() * 10 - 5),
+        y: py + (Math.random() * 4 - 2),
+        vx: (dir || (Math.random() * 2 - 1)) * (0.4 + Math.random() * 1.3),
+        vy: -(0.2 + Math.random() * 0.9),
+        life: 1, decay: 0.03 + Math.random() * 0.03,
+        r: 3 + Math.random() * 4,
+      });
+    }
+  }
 
   const GRAVITY = 0.9;
   const MOVE = 0.9;
@@ -208,6 +224,7 @@
     coins = coinsTemplate.map(c => ({ ...c, taken: false, bob: Math.PI * (c.x % 7) }));
     score = 0;
     cameraX = 0;
+    particles = [];
   }
 
   // Oyunu başlatır (giriş ekranından veya yeniden oynamadan).
@@ -243,6 +260,7 @@
       player.vy = JUMP_V;
       player.onGround = false;
       Sound.jump();
+      spawnDust(player.x + player.w / 2, player.y + player.h, 5, 0); // kalkış tozu
     }
 
     // Yerçekimi
@@ -264,17 +282,30 @@
 
     // --- Y ekseni hareketi + çarpışma ---
     player.y += player.vy;
+    const impactV = player.vy;          // çarpma anındaki hız (iniş tozu için)
     player.onGround = false;
     for (const p of platforms) {
       if (aabb(player, p)) {
-        if (player.vy > 0) { player.y = p.y - player.h; player.onGround = true; }
-        else if (player.vy < 0) player.y = p.y + p.h;
+        if (player.vy > 0) {
+          player.y = p.y - player.h; player.onGround = true;
+          if (impactV > 8) spawnDust(player.x + player.w / 2, player.y + player.h, 6, 0); // iniş tozu
+        } else if (player.vy < 0) player.y = p.y + p.h;
         player.vy = 0;
       }
     }
 
-    // Animasyon sayacı
-    if (Math.abs(player.vx) > 0.5 && player.onGround) player.anim += 0.25;
+    // Animasyon sayacı + koşma tozu
+    if (Math.abs(player.vx) > 0.5 && player.onGround) {
+      player.anim += 0.25;
+      if (++runDust % 6 === 0) spawnDust(player.x + player.w / 2, player.y + player.h, 1, -player.face);
+    }
+
+    // Toz parçacıklarını güncelle
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const d = particles[i];
+      d.x += d.vx; d.y += d.vy; d.vy += 0.04; d.vx *= 0.94; d.life -= d.decay;
+      if (d.life <= 0) particles.splice(i, 1);
+    }
 
     // Paralar
     for (const c of coins) {
@@ -373,11 +404,40 @@
     ctx.closePath(); ctx.fill();
   }
 
+  function drawParticles() {
+    for (const d of particles) {
+      const px = d.x - cameraX;
+      if (px < -20 || px > W + 20) continue;
+      ctx.globalAlpha = Math.max(0, d.life) * 0.55;
+      ctx.fillStyle = '#e8dcc0';
+      ctx.beginPath();
+      ctx.arc(px, d.y, d.r * (1.3 - d.life * 0.4), 0, 7);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawPlayer() {
     const x = player.x - cameraX;
     const y = player.y;
-    const bounce = (player.onGround && Math.abs(player.vx) > 0.5)
-      ? Math.sin(player.anim) * 3 : 0;
+
+    // --- Prosedürel animasyon parametreleri ---
+    const running = player.onGround && Math.abs(player.vx) > 0.5;
+    let sx = 1, sy = 1, rot = 0, bob = 0;
+    if (!player.onGround) {
+      // Havada: zıpla-uza / düş-sıkış (squash & stretch) + yöne yatış
+      const v = Math.max(-18, Math.min(18, player.vy));
+      sy = 1 + (-v) / 80;          // yukarı çıkarken uzar
+      sx = 1 - (-v) / 130;         //   ve hafif incelir
+      rot = player.face * 0.14;    // hareket yönüne yatar
+    } else if (running) {
+      // Koşma: yukarı-aşağı zıplama + sallanma + nefes alıp verme sıkışması
+      bob = Math.abs(Math.sin(player.anim)) * 5;
+      rot = Math.sin(player.anim) * 0.11;
+      sy = 1 - Math.sin(player.anim * 2) * 0.05;
+      sx = 1 + Math.sin(player.anim * 2) * 0.05;
+    }
+    const bounce = running ? Math.sin(player.anim) * 3 : 0;
 
     // Karakter resmi yüklüyse onu çiz (yön çevirme dahil), yoksa vektör Pofi.
     if (heroLoaded) {
@@ -385,8 +445,9 @@
       const dh = player.h * 1.5;        // resmi biraz büyük göster
       const dw = dh * ar;
       ctx.save();
-      ctx.translate(x + player.w / 2, y + player.h + bounce); // alt-orta hizala
-      ctx.scale(player.face, 1);
+      ctx.translate(x + player.w / 2, y + player.h - bob); // ayak noktasına hizala
+      ctx.rotate(rot);                                     // yatış (ekran uzayında)
+      ctx.scale(player.face * sx, sy);                     // yön + squash/stretch
       ctx.drawImage(hero, -dw / 2, -dh, dw, dh);
       ctx.restore();
       return;
@@ -494,6 +555,7 @@
     for (const p of platforms) drawPlatform(p);
     drawGoal();
     for (const c of coins) drawCoin(c);
+    drawParticles();
     drawPlayer();
     drawHUD();
 
