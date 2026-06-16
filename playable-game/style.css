@@ -1,0 +1,72 @@
+/* Pofi'nin Macerası — dikey (portrait) HTML5 platform oyunu */
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #0b1020;
+  overflow: hidden;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+/* Sahne ekrana ortalanır, oranı korur (9:16). */
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#game {
+  /* En-boy oranı korunarak ekrana sığdırılır (JS ile boyut ayarlanır). */
+  display: block;
+  background: #6ec6ff;
+  image-rendering: pixelated;
+  box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  touch-action: none;
+}
+
+/* --- Dokunmatik kontroller --- */
+#touch-controls {
+  position: fixed;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 22px;
+  pointer-events: none; /* sadece butonlar tıklanır */
+}
+
+.dpad { display: flex; gap: 14px; pointer-events: auto; }
+
+.btn {
+  pointer-events: auto;
+  width: 74px;
+  height: 74px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.35);
+  backdrop-filter: blur(4px);
+  color: #1b2540;
+  font-size: 30px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+  transition: transform .05s, background .05s;
+}
+.btn:active { transform: translateY(3px); background: rgba(255,255,255,0.6); }
+.btn.jump { width: 92px; height: 92px; font-size: 40px; background: rgba(255,214,102,0.85); }
+
+/* Masaüstünde dokunmatik kontrolleri gizleyebiliriz (klavye var). */
+@media (hover: hover) and (pointer: fine) {
+  #touch-controls { opacity: 0.25; }
+}

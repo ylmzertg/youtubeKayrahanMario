@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Pofi'nin Macerası</title>
+
+  <!--
+    ÖNEMLİ: YouTube Playables SDK, oyun kodundan ÖNCE yüklenmek ZORUNDADIR.
+    (Resmi gereklilik: developers.google.com/youtube/gaming/playables/reference/getting_started)
+    Bu script YouTube dışında 404 verir; oyun yine de çalışsın diye onerror ile yutuyoruz.
+  -->
+  <script src="https://www.youtube.com/game_api/v1" onerror="window.__noPlayablesSDK=true"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Dikey (portrait) sahne. Tüm oyun bu canvas içinde çizilir. -->
+  <div id="stage">
+    <canvas id="game" width="540" height="960"></canvas>
+
+    <!-- Dokunmatik kontroller (mobil). Klavye de çalışır: ← → ve Boşluk. -->
+    <div id="touch-controls">
+      <div class="dpad">
+        <button class="btn" id="btn-left"  aria-label="Sol">◀</button>
+        <button class="btn" id="btn-right" aria-label="Sağ">▶</button>
+      </div>
+      <button class="btn jump" id="btn-jump" aria-label="Zıpla">⤒</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

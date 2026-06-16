@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pofi-game",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "http-server", "playable-game", "-p", "4321", "-c-1"],
+      "port": 4321
+    }
+  ]
+}
