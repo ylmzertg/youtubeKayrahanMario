@@ -93,6 +93,30 @@
       osc.stop(t + dur + 0.02);
     }
 
+    // Arka plan müziği — neşeli, döngülü, alçak sesli (harici dosya yok).
+    let musicTimer = null, mi = 0;
+    const MELODY = [659, 0, 784, 659, 523, 0, 587, 659, 880, 0, 784, 659, 587, 0, 523, 0];
+    const BASS   = [131, 0, 0, 0, 98, 0, 0, 0, 147, 0, 0, 0, 98, 0, 0, 0];
+    function musicStep() {
+      mi++;
+      if (muted) return;
+      const ac = ensure();
+      if (!ac) return;
+      const t = ac.currentTime;
+      const play = (f, type, vol, dur) => {
+        if (!f) return;
+        const osc = ac.createOscillator(), g = ac.createGain();
+        osc.type = type; osc.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(g).connect(ac.destination);
+        osc.start(t); osc.stop(t + dur + 0.02);
+      };
+      play(MELODY[mi % MELODY.length], 'triangle', 0.05, 0.22);
+      play(BASS[mi % BASS.length], 'sine', 0.06, 0.30);
+    }
+
     return {
       unlock() { ensure(); },                 // kullanıcı hareketinde çağrılır
       setMuted(m) { muted = m; },
@@ -100,6 +124,8 @@
       coin() { tone('square', 880, 0.07, 0.16); setTimeout(() => tone('square', 1320, 0.10, 0.16), 70); },
       win()  { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone('triangle', f, 0.16, 0.2), i * 110)); },
       hurt() { tone('sawtooth', 300, 0.25, 0.2, 90); },
+      musicStart() { if (!musicTimer) { ensure(); musicTimer = setInterval(musicStep, 240); } },
+      musicStop()  { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } },
     };
   })();
 
@@ -306,6 +332,7 @@
   function startGame() {
     Sound.unlock();                  // ses bağlamını kullanıcı hareketinde aç
     Sound.setMuted(!SDK.audioEnabled());
+    Sound.musicStart();              // arka plan müziği
     currentLevel = 0;
     lives = 3;
     score = 0;
@@ -788,31 +815,62 @@
   function drawStartScreen() {
     drawBackground();
 
-    // Başlık
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#1b2540';
-    ctx.font = 'bold 58px sans-serif';
-    ctx.fillText('Maceraya', W / 2, 180);
-    ctx.fillText('Başla!', W / 2, 250);
+    // Zemin şeridi (karakter üstünde dursun)
+    ctx.fillStyle = (theme || THEMES[0]).soil;
+    ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+    ctx.fillStyle = (theme || THEMES[0]).grass;
+    ctx.fillRect(0, GROUND_Y, W, 14);
 
-    // Karakter görseli (yüklüyse) ortada büyük gösterilir
+    ctx.textAlign = 'center';
+
+    // Başlık — sarı dolgu + lacivert kontur (çizgi film hissi)
+    const ts = fitFont('KAYRAHAN', W - 60, 78);
+    ctx.font = 'bold ' + ts + 'px sans-serif';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 9; ctx.strokeStyle = '#1b2540';
+    ctx.strokeText('KAYRAHAN', W / 2, 150);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText('KAYRAHAN', W / 2, 150);
+
+    // Alt başlık
+    ctx.fillStyle = '#1b2540';
+    ctx.font = 'bold 30px sans-serif';
+    ctx.fillText('Macera Zamanı!', W / 2, 205);
+
+    // En iyi skor (varsa)
+    if (best > 0) {
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillStyle = '#1b2540';
+      ctx.fillText('🏆 En İyi: ' + best, W / 2, 245);
+    }
+
+    // Karakter — zeminde durur ve hafifçe zıplar
+    const bob = Math.abs(Math.sin(blink * 2)) * 14;
     if (heroLoaded) {
       const ar = hero.naturalWidth / hero.naturalHeight || 1;
-      const dh = 360;
+      const dh = 320;
       const dw = dh * ar;
-      ctx.drawImage(hero, W / 2 - dw / 2, H / 2 - dh / 2 + 30, dw, dh);
+      ctx.drawImage(hero, W / 2 - dw / 2, GROUND_Y - dh + 6 - bob, dw, dh);
     } else {
       ctx.fillStyle = '#1b2540';
       ctx.font = '26px sans-serif';
       ctx.fillText('(karakter resmi: assets/hero.png)', W / 2, H / 2);
     }
 
-    // Yanıp sönen "başla" ipucu
+    // Yanıp sönen "başla" ipucu (zeminin hemen üstünde)
     if (Math.floor(blink) % 2 === 0) {
-      ctx.fillStyle = '#1b2540';
-      fitFont('▶ Dokun ve Başla', W - 50, 34);
-      ctx.fillText('▶ Dokun ve Başla', W / 2, H - 180);
+      ctx.fillStyle = '#fff';
+      ctx.lineWidth = 6; ctx.strokeStyle = '#1b2540';
+      ctx.font = 'bold 34px sans-serif';
+      ctx.strokeText('▶ Dokun ve Başla', W / 2, GROUND_Y - 70);
+      ctx.fillText('▶ Dokun ve Başla', W / 2, GROUND_Y - 70);
     }
+
+    // Kontrol ipucu (en altta)
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText('← →  yürü   ·   ⤒  zıpla', W / 2, H - 34);
+
     ctx.textAlign = 'left';
   }
 
@@ -870,8 +928,8 @@
     state = 'start';   // giriş ekranıyla başla
 
     // Duraklat/devam (YouTube oyunu arka plana alınca)
-    SDK.onPause(() => { paused = true; });
-    SDK.onResume(() => { paused = false; });
+    SDK.onPause(() => { paused = true; Sound.musicStop(); });
+    SDK.onResume(() => { paused = false; Sound.musicStart(); });
 
     // Ses izni değişimini takip et (YouTube'da kullanıcı sesi açıp kapatınca)
     Sound.setMuted(!SDK.audioEnabled());
