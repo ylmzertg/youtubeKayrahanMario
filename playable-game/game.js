@@ -26,6 +26,7 @@
       onResume(fn)      { try { if (hasSDK) ytgame.system.onResume(fn); } catch (e) {} },
       audioEnabled()    { try { return hasSDK ? ytgame.system.isAudioEnabled() : true; } catch (e) { return true; } },
       onAudioEnabledChange(fn) { try { if (hasSDK) ytgame.system.onAudioEnabledChange(fn); } catch (e) {} },
+      sendScore(v) { try { if (hasSDK) ytgame.engagement.sendScore({ value: v }); } catch (e) {} },
       saveData(obj) {
         try {
           if (hasSDK) return ytgame.game.saveData(JSON.stringify(obj));
@@ -370,6 +371,7 @@
       state = 'over';
       if (score > best) best = score;
       SDK.saveData({ best, lastScore: score });
+      SDK.sendScore(score);            // skoru YouTube'a gönder
     }
   }
 
@@ -524,6 +526,7 @@
         state = 'win';                   // son bölüm bitti
         if (score > best) best = score;
         SDK.saveData({ best, lastScore: score, won: true });
+        SDK.sendScore(score);            // skoru YouTube'a gönder
       }
     }
 
