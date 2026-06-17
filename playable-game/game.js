@@ -132,6 +132,22 @@
   })();
 
   // ---------------------------------------------------------------------
+  // 2c) Haptik (titreşim) — web Vibration API (Playables SDK'da haptik yok).
+  //     Desteklenmiyorsa/iframe izin vermiyorsa sessizce atlanır.
+  //     enabled bayrağı ileride bir ayar düğmesine bağlanabilir.
+  // ---------------------------------------------------------------------
+  const Haptics = (() => {
+    const ok = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+    let enabled = true;
+    return {
+      supported: ok,
+      setEnabled(v) { enabled = v; },
+      isEnabled() { return enabled; },
+      buzz(pattern) { if (ok && enabled) { try { navigator.vibrate(pattern); } catch (e) {} } },
+    };
+  })();
+
+  // ---------------------------------------------------------------------
   // 3) Girdiler — klavye + dokunmatik
   // ---------------------------------------------------------------------
   const input = { left: false, right: false, jump: false };
@@ -149,7 +165,7 @@
 
   function bindButton(id, key) {
     const el = document.getElementById(id);
-    const on  = (e) => { input[key] = true;  e.preventDefault(); };
+    const on  = (e) => { input[key] = true;  Haptics.buzz(10); e.preventDefault(); }; // dokununca hafif tık
     const off = (e) => { input[key] = false; e.preventDefault(); };
     el.addEventListener('touchstart', on,  { passive: false });
     el.addEventListener('touchend',   off, { passive: false });
@@ -434,6 +450,7 @@
   function loseLife() {
     lives--;
     Sound.hurt();
+    Haptics.buzz(40);   // can kaybında belirgin titreşim
     if (lives <= 0) {
       state = 'over';
       if (score > best) best = score;
@@ -556,6 +573,7 @@
       if (aabb(player, box)) {
         p.taken = true;
         Sound.power();
+        Haptics.buzz([15, 30, 15]);                  // güçlendirme titreşimi
         if (p.type === 'heart') {
           if (lives < 3) lives++; else score += 5;   // dolu ise puan
         } else { // star
@@ -604,6 +622,7 @@
     // Hedef bayrağı
     if (aabb(player, goal)) {
       Sound.win();
+      Haptics.buzz([20, 40, 20, 40]);    // bölüm/oyun bitişi titreşimi
       if (currentLevel < LEVELS.length - 1) {
         state = 'levelclear';            // sonraki bölüm var
       } else {
