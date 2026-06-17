@@ -213,8 +213,15 @@
     },
   ];
 
+  // Bölüm temaları (atmosfer). Bölüm sayısından fazlaysa baştan döner.
+  const THEMES = [
+    { skyTop: '#8fd3ff', skyBot: '#d9f4ff', hill: '#bdebc1', grass: '#5fd068', soil: '#8b5a2b', cloud: 'rgba(255,255,255,0.9)', stars: false }, // gündüz
+    { skyTop: '#ff8a5c', skyBot: '#ffd9a0', hill: '#d99a6c', grass: '#7bc56b', soil: '#7a4a26', cloud: 'rgba(255,238,220,0.85)', stars: false }, // gün batımı
+    { skyTop: '#10193a', skyBot: '#37406e', hill: '#2b3358', grass: '#3f8a52', soil: '#4a3322', cloud: 'rgba(200,210,235,0.35)', stars: true },  // gece
+  ];
+
   // Aktif bölüm verisi (loadLevel ile doldurulur).
-  let LEVEL_W, startX, platforms, solids, oneway, coinsTemplate, spikesTemplate, enemiesTemplate, goal;
+  let LEVEL_W, startX, platforms, solids, oneway, coinsTemplate, spikesTemplate, enemiesTemplate, goal, theme;
 
   function loadLevel(i) {
     const L = LEVELS[i];
@@ -227,6 +234,7 @@
     spikesTemplate = L.spikes;
     enemiesTemplate = L.enemies;
     goal = { x: LEVEL_W - 150, y: GROUND_Y - 200, w: 16, h: 200 };
+    theme = THEMES[i % THEMES.length];
   }
 
   // ---------------------------------------------------------------------
@@ -502,15 +510,28 @@
   // 8) Çizim
   // ---------------------------------------------------------------------
   function drawBackground() {
-    // Gökyüzü gradyanı
+    const th = theme || THEMES[0];
+    // Gökyüzü gradyanı (temaya göre)
     const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#8fd3ff');
-    g.addColorStop(1, '#d9f4ff');
+    g.addColorStop(0, th.skyTop);
+    g.addColorStop(1, th.skyBot);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
 
+    // Yıldızlar (gece teması) — kameraya göre çok yavaş kayar
+    if (th.stars) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (let i = 0; i < 40; i++) {
+        const sx = (i * 137 - cameraX * 0.1) % (W + 40);
+        const x = sx < 0 ? sx + W + 40 : sx;
+        const y = (i * 53) % (GROUND_Y - 120) + 20;
+        const r = (i % 3 === 0) ? 1.8 : 1;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+      }
+    }
+
     // Tepeler (paralaks — yavaş kayar)
-    ctx.fillStyle = '#bdebc1';
+    ctx.fillStyle = th.hill;
     for (let i = -1; i < 6; i++) {
       const hx = i * 520 - (cameraX * 0.3) % 520;
       ctx.beginPath();
@@ -518,8 +539,8 @@
       ctx.fill();
     }
 
-    // Bulutlar
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    // Bulutlar (gecede daha soluk)
+    ctx.fillStyle = th.cloud;
     for (let i = 0; i < 5; i++) {
       const cx = (i * 360 - (cameraX * 0.15)) % (W + 360);
       const x = cx < 0 ? cx + W + 360 : cx;
@@ -538,10 +559,10 @@
     const x = p.x - cameraX;
     if (x + p.w < 0 || x > W) return;
     // Toprak
-    ctx.fillStyle = '#8b5a2b';
+    ctx.fillStyle = (theme || THEMES[0]).soil;
     ctx.fillRect(x, p.y, p.w, p.h);
     // Çim üstü
-    ctx.fillStyle = '#5fd068';
+    ctx.fillStyle = (theme || THEMES[0]).grass;
     ctx.fillRect(x, p.y, p.w, 12);
   }
 
