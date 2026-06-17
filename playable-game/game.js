@@ -125,6 +125,7 @@
       coin() { tone('square', 880, 0.07, 0.16); setTimeout(() => tone('square', 1320, 0.10, 0.16), 70); },
       win()  { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone('triangle', f, 0.16, 0.2), i * 110)); },
       hurt() { tone('sawtooth', 300, 0.25, 0.2, 90); },
+      power() { [659, 880, 1175].forEach((f, i) => setTimeout(() => tone('triangle', f, 0.12, 0.2), i * 80)); },
       musicStart() { if (!musicTimer) { ensure(); musicTimer = setInterval(musicStep, 240); } },
       musicStop()  { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } },
     };
@@ -298,8 +299,18 @@
     { skyTop: '#10193a', skyBot: '#37406e', hill: '#2b3358', grass: '#3f8a52', soil: '#4a3322', cloud: 'rgba(200,210,235,0.35)', stars: true },  // gece
   ];
 
+  // Güçlendirmeler — bölüm başına (güvenli, kuyu/diken/düşmandan uzak noktalar).
+  // type: 'heart' (+1 can) | 'star' (kısa dokunulmazlık + düşman yenme).
+  const LEVEL_POWERS = [
+    [{ x: 1700, y: 805, type: 'star' }],   // Bölüm 1
+    [{ x: 1200, y: 805, type: 'heart' }],  // Bölüm 2
+    [{ x: 1650, y: 805, type: 'star' }],   // Bölüm 3
+    [{ x: 2450, y: 805, type: 'heart' }],  // Bölüm 4
+    [{ x: 1100, y: 805, type: 'star' }],   // Bölüm 5
+  ];
+
   // Aktif bölüm verisi (loadLevel ile doldurulur).
-  let LEVEL_W, startX, platforms, solids, oneway, coinsTemplate, spikesTemplate, enemiesTemplate, goal, theme;
+  let LEVEL_W, startX, platforms, solids, oneway, coinsTemplate, spikesTemplate, enemiesTemplate, powersTemplate, goal, theme;
 
   function loadLevel(i) {
     const L = LEVELS[i];
@@ -311,6 +322,7 @@
     coinsTemplate = L.coins;
     spikesTemplate = L.spikes;
     enemiesTemplate = L.enemies;
+    powersTemplate = LEVEL_POWERS[i] || [];
     goal = { x: LEVEL_W - 150, y: GROUND_Y - 200, w: 16, h: 200 };
     theme = THEMES[i % THEMES.length];
   }
@@ -344,6 +356,8 @@
   let iframes = 0;      // hasar sonrası kısa dokunulmazlık (kare)
   let enemies = [];     // gezen düşmanlar (kopya)
   let spikes = [];      // dikenler (kopya)
+  let powerups = [];    // güçlendirmeler (kopya)
+  let starTime = 0;     // yıldız (dokunulmazlık) kalan kare
   let checkpointX = 80; // kuyuya düşünce geri doğacağı güvenli x
   let currentLevel = 0; // aktif bölüm indeksi
 
@@ -374,9 +388,11 @@
     coins = coinsTemplate.map(c => ({ ...c, taken: false, bob: Math.PI * (c.x % 7) }));
     enemies = enemiesTemplate.map(e => ({ ...e, alive: true, anim: 0 }));
     spikes = spikesTemplate.map(s => ({ ...s }));
+    powerups = powersTemplate.map(p => ({ ...p, taken: false, bob: Math.PI * (p.x % 7) }));
     cameraX = 0;
     particles = [];
     iframes = 0;
+    starTime = 0;
     checkpointX = startX;
   }
 
@@ -428,7 +444,7 @@
 
   // Tehlikeye (diken/düşman) yandan değme: can git + geri savrul + dokunulmazlık.
   function hitContact(dir) {
-    if (iframes > 0 || state !== 'play') return;
+    if (iframes > 0 || starTime > 0 || state !== 'play') return; // yıldızlıyken hasar yok
     loseLife();
     if (state === 'play') {
       iframes = 90;                 // ~1.5 sn dokunulmazlık
@@ -445,6 +461,7 @@
     if (state !== 'play') { blink += 0.08; return; }
 
     if (iframes > 0) iframes--;   // hasar sonrası dokunulmazlık geri sayımı
+    if (starTime > 0) starTime--; // yıldız (güçlendirme) dokunulmazlığı
 
     // Yatay hareket
     if (input.left)  { player.vx -= MOVE; player.face = -1; }
@@ -531,6 +548,22 @@
       if (aabb(player, box)) { c.taken = true; score++; Sound.coin(); }
     }
 
+    // Güçlendirmeler
+    for (const p of powerups) {
+      if (p.taken) continue;
+      p.bob += 0.1;
+      const box = { x: p.x - 16, y: p.y - 16, w: 32, h: 32 };
+      if (aabb(player, box)) {
+        p.taken = true;
+        Sound.power();
+        if (p.type === 'heart') {
+          if (lives < 3) lives++; else score += 5;   // dolu ise puan
+        } else { // star
+          starTime = 360;                            // ~6 sn dokunulmazlık
+        }
+      }
+    }
+
     // Düşmanlar: gidip gel + çarpışma (üstüne basınca yen, yandan değince can git)
     for (const e of enemies) {
       if (!e.alive) continue;
@@ -540,9 +573,9 @@
       e.anim += 0.2;
       if (aabb(player, e)) {
         const stomp = player.vy > 0 && (player.y + player.h) < (e.y + e.h * 0.6);
-        if (stomp) {
+        if (stomp || starTime > 0) {     // ezme VEYA yıldızlıyken dokunma → yen
           e.alive = false;
-          player.vy = -12;            // ezince zıpla
+          if (stomp) player.vy = -12;     // ezince zıpla
           score += 2;
           Sound.coin();
           spawnDust(e.x + e.w / 2, e.y + e.h, 7, 0);
@@ -716,6 +749,27 @@
     ctx.beginPath(); ctx.moveTo(x, s.y + s.h); ctx.lineTo(x + s.w, s.y + s.h); ctx.stroke();
   }
 
+  function drawStar(cx, cy, outer, inner) {
+    ctx.fillStyle = '#ffd23f'; ctx.strokeStyle = '#ff9e00'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = (i % 2) ? inner : outer;
+      const a = -Math.PI / 2 + i * Math.PI / 5;
+      const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
+      if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+
+  function drawPowerup(p) {
+    if (p.taken) return;
+    const x = p.x - cameraX;
+    if (x + 24 < 0 || x - 24 > W) return;
+    const yy = p.y + Math.sin(p.bob) * 4;
+    if (p.type === 'heart') heart(x, yy, 15, true);
+    else drawStar(x, yy, 16, 7);
+  }
+
   function drawParticles() {
     for (const d of particles) {
       const px = d.x - cameraX;
@@ -735,6 +789,17 @@
 
     const x = player.x - cameraX;
     const y = player.y;
+
+    // Yıldız (güçlendirme) parıltısı — biterken hızlı yanıp söner
+    if (starTime > 0 && !(starTime < 90 && Math.floor(starTime / 5) % 2 === 0)) {
+      ctx.save();
+      ctx.globalAlpha = 0.3 + 0.2 * Math.sin(starTime * 0.4);
+      ctx.fillStyle = '#ffe06a';
+      ctx.beginPath();
+      ctx.arc(x + player.w / 2, y + player.h / 2, player.w * 1.15, 0, 7);
+      ctx.fill();
+      ctx.restore();
+    }
 
     // --- Prosedürel animasyon parametreleri ---
     const running = player.onGround && Math.abs(player.vx) > 0.5;
@@ -944,6 +1009,7 @@
     drawGoal();
     for (const s of spikes) drawSpike(s);
     for (const c of coins) drawCoin(c);
+    for (const p of powerups) drawPowerup(p);
     for (const e of enemies) drawEnemy(e);
     drawParticles();
     drawPlayer();
