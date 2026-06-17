@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["-y", "http-server", "playable-game", "-p", "4321", "-c-1"],
       "port": 4321
+    },
+    {
+      "name": "kayrahan-tatli",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "http-server", "playable-dessert", "-p", "4322", "-c-1"],
+      "port": 4322
     }
   ]
 }

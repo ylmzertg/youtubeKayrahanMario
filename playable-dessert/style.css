@@ -1,0 +1,18 @@
+/* Kayrahan'ın Tatlı Dükkânı — dikey (portrait) tatlı süsleme oyunu */
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: #0b1020; overflow: hidden;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+
+#stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+
+#game {
+  display: block;
+  background: #ffe6f0;
+  box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  touch-action: none;
+}
