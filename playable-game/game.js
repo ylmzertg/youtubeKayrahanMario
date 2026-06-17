@@ -178,8 +178,21 @@
   bindButton('btn-right', 'right');
   bindButton('btn-jump',  'jump');
 
-  // Dokunuş/tıklama veya Space/Enter: ekranlardan ilerle (advance fonksiyonu altta).
-  canvas.addEventListener('pointerdown', () => advance());
+  // Ekran (client) koordinatını canvas iç koordinatına çevir.
+  function canvasPoint(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (canvas.width / r.width),
+             y: (e.clientY - r.top) * (canvas.height / r.height) };
+  }
+  function inBtn(p, b) { return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; }
+
+  // Dokunuş/tıklama: önce ses/titreşim düğmeleri, değilse ekranlardan ilerle.
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = canvasPoint(e);
+    if (inBtn(p, soundBtn))  { soundOn = !soundOn;   applyAudio(); Haptics.buzz(10); saveProgress(); return; }
+    if (inBtn(p, hapticBtn)) { hapticsOn = !hapticsOn; Haptics.setEnabled(hapticsOn); if (hapticsOn) Haptics.buzz(20); saveProgress(); return; }
+    advance();
+  });
   addEventListener('keydown', (e) => {
     if (state !== 'play' && (e.code === 'Space' || e.code === 'Enter')) advance();
   });
@@ -376,6 +389,15 @@
   let starTime = 0;     // yıldız (dokunulmazlık) kalan kare
   let checkpointX = 80; // kuyuya düşünce geri doğacağı güvenli x
   let currentLevel = 0; // aktif bölüm indeksi
+  let soundOn = true;   // kullanıcı ses tercihi
+  let hapticsOn = true; // kullanıcı titreşim tercihi
+
+  // Ses ayarı + SDK iznini birleştir
+  function applyAudio() { Sound.setMuted(!soundOn || !SDK.audioEnabled()); }
+
+  // Sağ üstteki aç/kapa düğmelerinin canvas konumları
+  const soundBtn  = { x: W - 58,  y: 92, w: 46, h: 46 };
+  const hapticBtn = { x: W - 112, y: 92, w: 46, h: 46 };
 
   // Ayak altında toz püskürt (n adet, dir: -1 sol / +1 sağ / 0 rastgele).
   function spawnDust(px, py, n, dir) {
@@ -415,7 +437,8 @@
   // Yeni oyun (giriş ekranından / Oyun Bitti / Tebrikler sonrası): Bölüm 1, 3 can.
   function startGame() {
     Sound.unlock();                  // ses bağlamını kullanıcı hareketinde aç
-    Sound.setMuted(!SDK.audioEnabled());
+    applyAudio();
+    Haptics.setEnabled(hapticsOn);
     Sound.musicStart();              // arka plan müziği
     currentLevel = 0;
     lives = 3;
@@ -446,6 +469,11 @@
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
+  // İlerleme + tercihleri kaydet (en iyi skor, ses/titreşim açık mı).
+  function saveProgress(extra) {
+    SDK.saveData(Object.assign({ best, soundOn, hapticsOn }, extra || {}));
+  }
+
   // Bir can eksilt; canlar biterse "Oyun Bitti".
   function loseLife() {
     lives--;
@@ -454,7 +482,7 @@
     if (lives <= 0) {
       state = 'over';
       if (score > best) best = score;
-      SDK.saveData({ best, lastScore: score });
+      saveProgress({ lastScore: score });
       SDK.sendScore(score);            // skoru YouTube'a gönder
     }
   }
@@ -628,7 +656,7 @@
       } else {
         state = 'win';                   // son bölüm bitti
         if (score > best) best = score;
-        SDK.saveData({ best, lastScore: score, won: true });
+        saveProgress({ lastScore: score, won: true });
         SDK.sendScore(score);            // skoru YouTube'a gönder
       }
     }
@@ -897,6 +925,28 @@
     else { ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill(); ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 2; ctx.stroke(); }
   }
 
+  function drawToggle(b, icon, isOn) {
+    ctx.fillStyle = isOn ? 'rgba(40,60,110,0.55)' : 'rgba(40,60,110,0.30)';
+    roundRect(b.x, b.y, b.w, b.h, 12); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2;
+    roundRect(b.x, b.y, b.w, b.h, 12); ctx.stroke();
+    ctx.globalAlpha = isOn ? 1 : 0.5;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '26px sans-serif'; ctx.fillStyle = '#fff';
+    ctx.fillText(icon, b.x + b.w / 2, b.y + b.h / 2 + 1);
+    ctx.globalAlpha = 1;
+    if (!isOn) { // kapalıyken kırmızı çapraz çizgi
+      ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(b.x + 10, b.y + 10); ctx.lineTo(b.x + b.w - 10, b.y + b.h - 10); ctx.stroke();
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
+  function drawToggles() {
+    drawToggle(soundBtn, '🔊', soundOn);
+    drawToggle(hapticBtn, '📳', hapticsOn);
+  }
+
   function drawHUD() {
     // Para sayacı (sol üst)
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -922,6 +972,8 @@
     ctx.textAlign = 'center';
     ctx.fillText('Bölüm ' + (currentLevel + 1) + ' / ' + LEVELS.length, W / 2, 37);
     ctx.textAlign = 'left';
+
+    drawToggles();   // ses / titreşim aç-kapa (sağ üst)
   }
 
   // Metni maxWidth'e sığacak en büyük punto ile ayarlar (font'u set eder, puntoyu döner).
@@ -1010,6 +1062,7 @@
     ctx.fillText('← →  yürü   ·   ⤒  zıpla', W / 2, H - 34);
 
     ctx.textAlign = 'left';
+    drawToggles();   // ses / titreşim aç-kapa (sağ üst)
   }
 
   const controlsEl = document.getElementById('touch-controls');
@@ -1061,6 +1114,9 @@
   async function boot() {
     const saved = await SDK.loadData();
     if (saved && typeof saved.best === 'number') best = saved.best;
+    if (saved && saved.soundOn === false) soundOn = false;     // kayıtlı tercihler
+    if (saved && saved.hapticsOn === false) hapticsOn = false;
+    Haptics.setEnabled(hapticsOn);
 
     loadLevel(0);      // ilk bölümü yükle
     resetLevel();      // bölümü hazırla
@@ -1071,8 +1127,8 @@
     SDK.onResume(() => { paused = false; Sound.musicStart(); });
 
     // Ses izni değişimini takip et (YouTube'da kullanıcı sesi açıp kapatınca)
-    Sound.setMuted(!SDK.audioEnabled());
-    SDK.onAudioEnabledChange((enabled) => { Sound.setMuted(!enabled); });
+    applyAudio();
+    SDK.onAudioEnabledChange(() => applyAudio());
 
     loop();
 
