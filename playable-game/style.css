@@ -44,29 +44,37 @@ html, body {
   pointer-events: none; /* sadece butonlar tıklanır */
 }
 
-.dpad { display: flex; gap: 14px; pointer-events: auto; }
+.dpad { display: flex; gap: 18px; pointer-events: auto; }
 
+/* Küçük çocuklar için büyük, belirgin, kolay basılan butonlar. */
 .btn {
   pointer-events: auto;
-  width: 74px;
-  height: 74px;
-  border: none;
+  width: 92px;
+  height: 92px;
+  border: 3px solid rgba(255,255,255,0.9);
   border-radius: 50%;
-  background: rgba(255,255,255,0.35);
+  background: rgba(40,60,110,0.55);
   backdrop-filter: blur(4px);
-  color: #1b2540;
-  font-size: 30px;
+  color: #fff;
+  font-size: 40px;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+  box-shadow: 0 5px 0 rgba(0,0,0,0.25);
   transition: transform .05s, background .05s;
 }
-.btn:active { transform: translateY(3px); background: rgba(255,255,255,0.6); }
-.btn.jump { width: 92px; height: 92px; font-size: 40px; background: rgba(255,214,102,0.85); }
+.btn:active { transform: translateY(4px); background: rgba(40,60,110,0.85); }
+.btn.jump {
+  width: 116px;
+  height: 116px;
+  font-size: 52px;
+  background: rgba(255,200,60,0.9);
+  color: #1b2540;
+  border-color: #fff;
+}
 
-/* Masaüstünde dokunmatik kontrolleri gizleyebiliriz (klavye var). */
+/* Masaüstünde dokunmatik kontroller hafif soluk (klavye de var). */
 @media (hover: hover) and (pointer: fine) {
-  #touch-controls { opacity: 0.25; }
+  #touch-controls { opacity: 0.4; }
 }
